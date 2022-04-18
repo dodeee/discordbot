@@ -6,7 +6,7 @@ module.exports = class Play extends Command{
     static name = this.cmdChar+'play';
 
     static match(message){
-        return message.content.startsWith(this.name)
+        return message.content === this.name
     }
 
     static action(message){

@@ -9,7 +9,7 @@ module.exports = class Reply {
     static say(msg){
         this.messager.send(msg)
     }
-    static sayEmbed(song, description, img){
+    static sayEmbedSong(song, description, img){
         var removeExt = song.split('.');
         var songArray= removeExt[0].split('-');
         var songName = songArray[0];
@@ -18,10 +18,16 @@ module.exports = class Reply {
         .setColor('#0099ff')
         .setTitle(songName)
         .setDescription(artist)
-        .setThumbnail('https://i.imgur.com/AfFp7pu.png')
-        .addField("Genre",description.toUpperCase())
+        .setThumbnail('https://ak.picdn.net/shutterstock/videos/1019445205/thumb/1.jpg?ip=x480')
+        .addField("Playlist",description.toUpperCase())
         .setTimestamp()
+        .setFooter("\u2800".repeat(30/*any big number works too*/)+"|")
         this.messager.send(songEmbed);
         }
-    
+    static sayEmbedWithTitle(title, content){
+        const searchEmbed = new MessageEmbed()
+        .setTitle(title)
+        .setDescription(content)
+        this.messager.send(searchEmbed)
+    }
 }

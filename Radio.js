@@ -10,17 +10,23 @@ module.exports = class Radio {
     static nbVoteskip = 0
     static blindtest = false;
     static blindtestDelay=10;
+    static currSong='';
+
+    //// RADIO COMMANDS ///////////////////////////////////////////////////////////////////////////
 
     static start(message) {
         if (this.getState() === 0) {
-            Reply.say("Welcome to RadioBot (type !help for command info)")
+            this.voiceChan = message.guild.channels.cache
+            .filter(function (channel) { return channel.type == 'voice' && channel.id == 639485992952397829 }) // 639485992952397829
+            .first()
+            this.setPlaylistEveryHour()
+            Reply.sayEmbedWithTitle("Welcome to RadioBot (type !help for command info)", '')
             if(this.blindtest) Reply.say("**Blindtest mode**")
             else Reply.say("**Radio mode**")
             this.setState(1)
             Library.createPlaylist()
-            this.voiceChan = message.guild.channels.cache
-                .filter(function (channel) { return channel.type === 'voice' })
-                .first()
+           
+            //console.log(this.voiceChan)
             this.voiceChan.join()
                 .then(function (con) {
                     Radio.connection = con
@@ -60,32 +66,6 @@ module.exports = class Radio {
         }
     }
 
-    static playNextFile() {
-        this.nbVoteskip = 0
-        var song = Library.getSongName();
-        var songNameArray = song.split('/');
-        var songName = songNameArray[songNameArray.length-1];
-        if(this.blindtest){
-                this.dispatcher = Radio.connection.play(song);
-                setTimeout(function(){
-                    Reply.sayEmbed(songName, Library.genre,"./img/dvd.png");
-                }, this.blindtestDelay* 1000 );
-                setTimeout(function(){
-                    console.log("valblindtest= "+Radio.blindtest);
-                   if(Radio.blindtest) Radio.playNextFile()
-                }, this.blindtestDelay* 1000+10000);
-                
-        }
-        else {
-            this.dispatcher = Radio.connection.play(song);
-            Reply.sayEmbed(songName, Library.genre,"./img/dvd.png");
-            this.dispatcher.on('finish', function(){
-                if(!Radio.blindtest) Radio.playNextFile()
-            })
-        }
-    }
-
-    
     static voteskip(){
         this.nbVoteskip+=1
         let mandatoryVoteskipNb = Math.ceil((this.voiceChan.members.size - 1)/2);
@@ -96,66 +76,124 @@ module.exports = class Radio {
         }
     }
     
-    static playlists(){
+    static playlist(){
         if(this.getState!=0){
             var lists= '';
-            Library.getSongFolders().forEach(element => {
-                lists+= ' ' + element;
+            Library.getSongFolders().forEach((element, index) => {
+                lists+= (index+1)+' - ' + element.toUpperCase()+'\n';
             });
-            Reply.say("Available playlists : "+ lists);
+            Reply.sayEmbedWithTitle("Current playlist : \n"+Library.genre.toUpperCase()+"\n\nAvailable playlists : ", lists);
         }
     }
     
     static me(message){
-        BD.getUserById(message.member.user.id)
-        .then(res =>{
+        const id = message.member.user.id.toString()
+        BD.getUserById(id).then(res =>{
             if(res){
+                let channelPoints = res.nbCmds*10 + res.hoursSpent*100
                 var roleName = "unknown";
                 if(res.role==0) roleName = "Admin";
-                else if(role==1) roleName = "User";
-                Reply.say("User: "+res.name+"\nNbCmd: "+res.nbCmds+"\nRole: "+roleName);
+                else if(res.role==1) roleName = "User";
+                Reply.sayEmbedWithTitle("User: "+res.name+"\n","Chan Points: "+channelPoints+"\nRole: "+roleName);
             } else{
                 console.log("UnknownUser");
             }
             
         })
-        .catch((error) => console.log("Promise error"));
+        //.catch((error) => console.log("Promise error"));
         console.log(message.member.user.tag);
         console.log(message.member.user.id);
     }
-    
-    static checkMessage(message){
-        BD.getUserById(message.member.user.id).then(res =>{
-            if(res){
-                BD.addOneCmdToUser(message.member.user.id, res.nbCmds);
-            } else{
-                var obj = new Object();
-                obj.name = (message.member.user.tag);
-                obj.role  = 1;
-                obj.nbCmds = 0;
-                obj._id = message.member.user.id;
-                var jsonUser= JSON.parse(JSON.stringify(obj));
-                BD.addUser(jsonUser);
-            }
-        });
+
+    static setBlindtest(val){
+        this.blindtest=val;
+        if(this.blindtest) Reply.say("**Blindtest mode**")
+        else Reply.say("**Radio mode**")
     }
     
-    static switchGenre(message){
+   
+    
+    static setlist(message){
+        console.log(message.content)
         if(this.getState!=0){
-            var genre = message.content.split(' ')[1];
-            if(genre !== undefined){
-                const includesValue = Library.getSongFolders().some(element => {
-                    return element.toLowerCase() === genre.toLowerCase();
-                });
-                if(includesValue){
-                    Library.setGenre(genre);
-                } else{
-                    console.log("Genre doesnt exist");
-                }
+            let chosenListNum = message.content.split(' ')[1];
+            if(chosenListNum !== undefined && (chosenListNum-1) >= 0 && (chosenListNum-1) < Library.getSongFolders().length){
+                console.log(Library.getSongFolders()[chosenListNum-1])
+                Library.setGenre(Library.getSongFolders()[chosenListNum-1]); 
             } else {
-                Reply.say("Genre : "+Library.genre);
+                console.log("bad list choice")
             }
-            console.log(genre);
+        }
+    }
+
+
+    static reportSong(message, commandLength){
+        const fs = require('fs')
+        
+        if(this.getState() > 0 && this.currSong != ''){ // chanson en cours
+            let logContent = this.currSong
+            let reason = message.content.substr(commandLength)
+            if(reason){
+                logContent+=', '+reason
+            }
+            logContent+=', ' +new Date()+'\n'
+            fs.writeFile('./logs/report-logs.txt', logContent,{flag: 'a+'}, err => {
+                if (err) {
+                console.error(err)
+                return
+                }
+                Reply.say('Reported song : ' + this.currSong);
+            })
+        } else{
+            console.log("pas de chanson"+this.currSong)
+        }
+
+    }
+
+    static searchSong(message, commandLength){
+        let search = message.content.substr(commandLength+1)
+        if(search.length > 1){
+            let foundResults = Library.searchSong(search)
+            if(foundResults !== undefined && foundResults.length > 0){
+                let resultMessage = ''
+                foundResults.forEach(res => {
+                    resultMessage+=res+'\n'
+                });
+                Reply.sayEmbedWithTitle( "Results",resultMessage)
+            } else{
+                Reply.say("Not found")
+            }
+        } else {
+            Reply.say("Bad search")
+        }
+
+    }
+
+    /// END OF COMMANDS /////////////////////////////////////////////////////////////////////
+
+    static playNextFile() {
+        this.nbVoteskip = 0
+        var song = Library.setNextFile();
+        console.log(song)
+        var songNameArray = song.split('/');
+        this.currSong = songNameArray[songNameArray.length-1];
+        if(this.blindtest){
+                this.dispatcher = Radio.connection.play(song);
+                setTimeout(function(){
+                    Reply.sayEmbedSong(currSong, Library.genre,"./img/dvd.png");
+                }, this.blindtestDelay* 1000 );
+                setTimeout(function(){
+                    console.log("valblindtest= "+Radio.blindtest);
+                   if(Radio.blindtest) Radio.playNextFile()
+                }, this.blindtestDelay* 1000+10000);
+                
+        }
+        else {
+            this.dispatcher = Radio.connection.play(song);
+            Reply.sayEmbedSong(this.currSong, Library.genre,"./img/dvd.png");
+            this.dispatcher.on('finish', function(){
+                if(!Radio.blindtest) Radio.playNextFile()
+            })
         }
     }
 
@@ -167,9 +205,63 @@ module.exports = class Radio {
         this.state = val
     }
 
-    static setBlindtest(val){
-        this.blindtest=val;
-        if(this.blindtest) Reply.say("**Blindtest mode**")
-        else Reply.say("**Radio mode**")
+    static setPlaylistEveryHour(){
+        var now = new Date();
+        var delay = 60 * 60 * 1000; // 1 hour in msec
+        var start = delay - (now.getMinutes() * 60 + now.getSeconds()) * 1000 + 10000 //+ now.getMilliseconds();
+        console.log("members : "+ JSON.stringify(this.voiceChan.members[0]))
+        //this.countChannelPoints()
+        setTimeout(function updating() {
+            if(Radio.state === 1){
+            console.log("every hour passed : "+new Date().getHours())
+            Library.setPlanningsPlaylist()
+            Radio.countChannelPoints()
+            }
+        setTimeout(updating, delay);
+        }, start);
+
+    }
+    static countChannelPoints(){
+        console.log("points de chaine")
+        this.voiceChan.members.forEach(user => {
+            console.log(user.user.username)
+            if(user.user.username !== "RadioBot"){
+                console.log(user.user.id) //361979066951270400
+                BD.getUserById(user.user.id.toString()).then(res =>{
+                    if(res){
+                        BD.addOneHourToUser(user.user.id.toString(), res.hoursSpent)
+                    } else{
+                        var newUser = new Object()
+                        newUser.name = (user.user.username)
+                        newUser.role  = 1
+                        newUser.nbCmds = 0
+                        newUser.hoursSpent = 1
+                        newUser._id = user.user.id.toString()
+                        var jsonUser= JSON.parse(JSON.stringify(newUser))
+                        BD.addUser(jsonUser)
+                    }
+                });
+            }
+        });
+        
+    }
+
+    static checkMessage(message){
+        console.log("writer id : " + message.member.user.id)
+        const id = message.member.user.id.toString()
+        BD.getUserById(id).then(res =>{
+            if(res){
+                BD.addOneCmdToUser(id, res.nbCmds)
+            } else{
+                var newUser = new Object()
+                newUser.name = (message.member.user.tag)
+                newUser.role  = 1
+                newUser.nbCmds = 1
+                newUser.hoursSpent = 0
+                newUser._id = id
+                var jsonUser= JSON.parse(JSON.stringify(newUser))
+                BD.addUser(jsonUser)
+            }
+        });
     }
 }

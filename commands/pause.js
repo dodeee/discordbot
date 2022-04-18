@@ -6,7 +6,7 @@ module.exports = class Pause extends Command{
     static name = this.cmdChar+'pause';
 
     static match(message){
-        return message.content.startsWith(this.name)
+        return message.content === this.name
     }
 
     static action(message){

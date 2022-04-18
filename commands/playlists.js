@@ -3,7 +3,7 @@ const Radio =  require('../Radio')
 
 module.exports = class Playlists extends Command{
 
-    static name = this.cmdChar+'lists';
+    static name = this.cmdChar+'playlist';
 
     static match(message){
         return message.content.startsWith(this.name);
@@ -11,6 +11,6 @@ module.exports = class Playlists extends Command{
 
     static action(message){
         console.log("cmd list action");
-        Radio.playlists();
+        Radio.playlist();
     }
 }
