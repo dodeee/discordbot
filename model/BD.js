@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 module.exports = class BD{
 
     static async BDConnect(){
-        mongoose.connect('mongodb+srv://dodee:Etienne38@cluster0.0p8d5.mongodb.net/myFirstDatabase?retryWrites=true&w=majority',
+        mongoose.connect('mongodb+srv://
         { useNewUrlParser: true,
             useUnifiedTopology: true })
         .then(() => console.log('Connexion à MongoDB réussie !'))
