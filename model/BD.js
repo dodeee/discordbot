@@ -19,12 +19,11 @@ module.exports = class BD{
             return items;
           })
         .catch((error) => console.log(error));
-        
     }
 
     static getUserById(id){
         return User.findOne({_id: id})
-        .then((user) => {console.log("found object" ); return user;})
+        .then((user) => {console.log("" ); return user;})
         .catch((error) => console.log(error));
     }
 
@@ -37,18 +36,27 @@ module.exports = class BD{
         user.save()
         .then(() => console.log("saved object"))
         .catch((error) => {console.log(error);});
-
     }
     static addOneCmdToUser(id, nbC){
         User.updateOne({_id: id}, {nbCmds: nbC+1})
-        .then(() => console.log("AddedCmd"))
+        .then(() => console.log(""))
         .catch((error) => console.log(error));
     }
+    static addOneHourToUser(id, nbH){
+        User.updateOne({_id: id}, {hoursSpent: nbH+1})
+        .then(() => console.log(""))
+        .catch((error) => console.log(error));
+    }
+    static setRole(id, newRole){
+        User.updateOne({_id: id}, {role: newRole})
+        .then(() => console.log("set role"))
+        .catch((error) => console.log(error));
+    }
+
 
     static updateUser(){
 
     }
-
     static deleteUserById(id){
         User.deleteOne({_id: id})
         .then(() => console.log("deleted object"))
@@ -60,4 +68,22 @@ module.exports = class BD{
         .then((user) => console.log("deleted object" + user))
         .catch((error) => console.log(error));
     }
+
+    static addSkips(id, skipsUsed, skipListsUsed){
+        User.updateOne(
+            {_id: id}, 
+            {$inc:{'skips': skipsUsed, 'skiplists': skipListsUsed}}
+            )
+        .then(() => console.log(""))
+        .catch((error) => console.log(error));
+    }
+    static addBlindtestPoints(id, nb){
+        User.updateOne(
+            {_id: id}, 
+            {$inc:{'blindtestPoints':nb}}
+            )
+        .then(() => console.log(""))
+        .catch((error) => console.log(error));
+
+    }   
 }

@@ -9,11 +9,11 @@ module.exports = class Reply {
     static say(msg){
         this.messager.send(msg)
     }
-    static sayEmbedSong(song, description, img){
-        var removeExt = song.split('.');
-        var songArray= removeExt[0].split('-');
-        var songName = songArray[0];
-        var artist = songArray[1];
+    static sayEmbedSong(songName, artist, description, img){
+        // var removeExt = song.split('.');
+        // var songArray= removeExt[0].split('-');
+        // var songName = songArray[0];
+        // var artist = songArray[1];
         const songEmbed = new MessageEmbed()
         .setColor('#0099ff')
         .setTitle(songName)

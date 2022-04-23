@@ -2,6 +2,7 @@
 const planning = require('./data/planning')
 
 
+
 module.exports = class Library{
 
     static playlist = 0
@@ -46,11 +47,11 @@ module.exports = class Library{
         return directories;
     }
 
-    static setGenre(genre){
-        const includesGenre = this.getSongFolders().some(e=> {
+    static setSongFolder(genre){
+        const includesList = this.getSongFolders().some(e=> {
             return e.toLowerCase() === genre.toLowerCase();
         });
-        if(includesGenre){
+        if(includesList){
             this.forcedList=true
             this.genre = genre;
             this.playlist=[];
@@ -72,7 +73,7 @@ module.exports = class Library{
             })
             if(matches.length>0){
                 matches.forEach((match,index, arr) => {
-                    match = match.split('.')[0]
+                    match = Library.getSongArtist(match) + ' - '+ Library.getSongName(match)
                     arr[index] = match + " ("+dir+")"
                 })
                 //if(matches.length > 15) matches.length = 15
@@ -109,13 +110,26 @@ module.exports = class Library{
         if(currSlot !== undefined){
             if(currSlot.list === "videogames-ost-movie-opening"){
                 console.log("viedogameslist\n")
-                this.setGenre("pop-rock-alternative-folk-funk")
+                this.setSongFolder("hiphop-rap-trap-phonk-instrumental")
             } else {
-                this.setGenre(currSlot.list)
+                this.setSongFolder(currSlot.list)
             }
         } else {
-            this.setGenre("pop-rock-alternative-folk-funk")
+            this.setSongFolder("pop-rock-alternative-folk-funk")
         }
         console.log("slot : "+currSlot.day+currSlot.list)
+    }
+
+    static getSongArtist(song){
+        
+        return song.split('-')[0].trim()
+    }
+    static getSongName(song){
+        let fileExtPos = song.lastIndexOf(".");
+        if(song.substring(0, fileExtPos).split('-')[1]){
+            return song.substring(0, fileExtPos).split('-')[1].trim()
+        } else{
+            return song.substring(0, fileExtPos)
+        }
     }
 }
