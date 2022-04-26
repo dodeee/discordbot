@@ -1,7 +1,8 @@
 const Library = require('./library')
 const Reply = require('./reply')
 const BD = require('./model/BD')
-const levenshtein = require('js-levenshtein');
+const Blindtest = require('./blindtest')
+
 
 module.exports = class Radio {
     static state = 0
@@ -10,32 +11,27 @@ module.exports = class Radio {
     static voiceChan = 0
     static nbVoteskip = 0
     static blindtest = false;
-    static blindtestDelay=20;
     static currSong='';
     static commmands = []
     static nbVotelist = 0
     static voiceChanId = 0
-    static isBlindtestAnswer = false
-    static isBlindtestSongFound = false
-    static isBlindtestArtistFound = false
 
-
-    //// RADIO COMMANDS ///////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////// RADIO COMMANDS ///////////////////////////////////////////////////////////////////////////
 
     static start(message) {
+        
         console.log('vboice chan : '+this.voiceChanId)
         if (this.getState() === 0) {
             this.voiceChan = message.guild.channels.cache
             .filter(function (channel) { return channel.type == 'voice' && channel.id == Radio.voiceChanId }) // 639485992952397829
             .first()
             this.setPlaylistEveryHour()
+           
             Reply.sayEmbedWithTitle("Welcome to RadioBot (type !help for command info)", '')
             if(this.blindtest) Reply.say("**Blindtest mode**")
             else Reply.say("**Radio mode**")
             this.setState(1)
             Library.createPlaylist()
-           
-            //console.log(this.voiceChan)
             this.voiceChan.join()
                 .then(function (con) {
                     Radio.connection = con
@@ -135,6 +131,7 @@ module.exports = class Radio {
 
     static setBlindtest(val){
         this.blindtest=val;
+        Blindtest.setBlindtestOn(val && this.getState() === 1)
         if(this.blindtest){
             Reply.say("**Blindtest mode**")
             if(this.getState() >0) this.playNextFile()
@@ -163,9 +160,7 @@ module.exports = class Radio {
     }
 
 
-    static reportSong(message, commandLength){
-        const fs = require('fs')
-        
+    static report(message, commandLength){  
         if(this.getState() > 0 && this.currSong != ''){ // chanson en cours
             let logContent = Library.genre + '/'+this.currSong
             let reason = message.content.substr(commandLength)
@@ -173,20 +168,14 @@ module.exports = class Radio {
                 logContent+=', '+reason
             }
             logContent+=', ' +new Date()+'\n'
-            fs.writeFile('./logs/report-logs.txt', logContent,{flag: 'a+'}, err => {
-                if (err) {
-                console.error(err)
-                return
-                }
-                Reply.say('Reported song : ' + this.currSong);
-            })
+            Library.writeFileData(logContent, './logs/report-logs.txt')
+            Reply.say('Reported song : ' + this.currSong);
         } else{
             console.log("pas de chanson"+this.currSong)
         }
-
     }
 
-    static searchSong(message, commandLength){
+    static search(message, commandLength){
         let search = message.content.substr(commandLength+1)
         if(search.length > 1){
             let foundResults = Library.searchSong(search)
@@ -265,26 +254,25 @@ module.exports = class Radio {
         Reply.sayEmbedWithTitle("Existing commands information",infos);
     }
 
-    static addit(){
-        const fs = require('fs')
-        
+    static addit(){        
         if(this.getState() > 0 && this.currSong != ''){ // chanson en cours
             let logContent = Library.genre + '/'+this.currSong + '\n'
-              
-            fs.writeFile('./logs/blindtest-list.txt', logContent,{flag: 'a+'}, err => {
-                if (err) {
-                console.error(err)
-                return
-                }
-                Reply.say('Song added for blindtest : ' + this.currSong);
-            })
+            Library.writeFileData(logContent, './logs/blindtest-list.txt')  
+            Reply.say('Song added for blindtest : ' + this.currSong);
         } else{
             console.log("pas de chanson"+this.currSong)
         }
-
+    }
+    static askfor(message){
+        let askedSong = message.content.split(' ')[1];
+        if(askedSong !== undefined){
+            askedSong+= ', '+message.member.user.username
+            Library.writeFileData(askedSong,'./logs/ask-song.txt')
+            Reply.say("Song asked")
+        }
     }
 
-    /// END OF COMMANDS /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////// END OF COMMANDS /////////////////////////////////////////////////////////////////////
 
     static playNextFile() {
         this.nbVoteskip = 0
@@ -292,23 +280,14 @@ module.exports = class Radio {
         console.log(song)
         var songNameArray = song.split('/');
         this.currSong = songNameArray[songNameArray.length-1];
+        this.dispatcher = Radio.connection.play(song);
         if(this.blindtest){
-                this.dispatcher = Radio.connection.play(song);
-                this.isBlindtestArtistFound = false
-                this.isBlindtestSongFound = false
-                this.isBlindtestAnswer=true
-                setTimeout(function(){
-                    if(Radio.blindtest && Radio.getState() > 0)Reply.sayEmbedSong(Library.getSongName(Radio.currSong), Library.getSongArtist(Radio.currSong),Library.genre,"./img/dvd.png");
-                    Radio.isBlindtestAnswer = false
-                }, this.blindtestDelay* 1000 );
-                setTimeout(function(){
-                   // console.log("valblindtest= "+Radio.blindtest);
-                   if(Radio.blindtest && Radio.getState() > 0) Radio.playNextFile()
-                }, this.blindtestDelay* 1000+10000);
-                
+            Blindtest.setupBlindtest(this.currSong).then(()=>{
+                console.log("finito dans radio")
+                if(Blindtest.isBlindtestOn) Radio.playNextFile()
+            })
         }
         else {
-            this.dispatcher = Radio.connection.play(song);
             Reply.sayEmbedSong(Library.getSongName(Radio.currSong), Library.getSongArtist(Radio.currSong), Library.genre,"./img/dvd.png");
             this.dispatcher.on('finish', function(){
                 if(!Radio.blindtest) Radio.playNextFile()
@@ -316,49 +295,16 @@ module.exports = class Radio {
         }
     }
 
-    static readBlindtestAnswer(message){
-        const id = message.member.user.id.toString()
-        const answer = message.content.toLowerCase()
-        const currSong = Library.getSongName(this.currSong).toLowerCase()
-        const currArtist = Library.getSongArtist(this.currSong).toLowerCase()
-        // console.log(levenshtein(answer, currSong))
-        // console.log(currSong.length/4)
-        const leveshteinSong = levenshtein(answer, currSong)
-        const leveshteinArtist = levenshtein(answer, currArtist)
-
-
-        if(!this.isBlindtestSongFound && (answer.includes(currSong) || leveshteinSong < currSong.length/4)){
-            Reply.say(message.member.user.username+" found song!")
-            this.isBlindtestSongFound = true
-            BD.getUserById(id).then(user =>{
-                if(user){
-                        BD.addBlindtestPoints(id, 50)
-                } else{
-                    console.log("UnknownUser");
-                }
-            })
-
-        }
-        if(!this.isBlindtestArtistFound && (answer.includes(currArtist) || leveshteinArtist < currArtist.length/4)){
-            Reply.say(message.member.user.username+" found artist!")
-            this.isBlindtestArtistFound = true
-            BD.getUserById(id).then(user =>{
-                if(user){
-                        BD.addBlindtestPoints(id, 50)
-                } else{
-                    console.log("UnknownUser");
-                }
-            })
-        }
+    static isBlindtestOn(){
+        return this.blindtest
     }
-
 
     static getState() {
         return this.state
     }
 
-
     static setState(val) {
+        Blindtest.setBlindtestOn(this.blindtest && val === 1)
         this.state = val
     }
     static setCommands(commands){
@@ -369,7 +315,6 @@ module.exports = class Radio {
         var now = new Date();
         var delay = 60 * 60 * 1000; // 1 hour in msec
         var start = delay - (now.getMinutes() * 60 + now.getSeconds()) * 1000 + 10000 //+ now.getMilliseconds();
-        console.log("members : "+ JSON.stringify(this.voiceChan.members[0]))
         //this.countChannelPoints()
         setTimeout(function updating() {
             if(Radio.state === 1){
@@ -384,9 +329,10 @@ module.exports = class Radio {
     }
     static countChannelPoints(){
         console.log("points de chaine")
+        let nbUserInChannel = 0
         this.voiceChan.members.forEach(user => {
             console.log(user.user.username)
-            if(user.user.username !== "RadioBot" && user.user.username !== "BlablaBot" ){
+            if(!user.user.bot){
                 console.log(user.user.id) //361979066951270400
                 BD.getUserById(user.user.id.toString()).then(res =>{
                     if(res){
@@ -405,9 +351,13 @@ module.exports = class Radio {
                         BD.addUser(jsonUser)
                     }
                 });
+                nbUserInChannel++
             }
         });
-        
+        if(nbUserInChannel === 0){
+            this.stop()
+        }
+            
     }
 
     static checkMessage(message){
@@ -420,8 +370,8 @@ module.exports = class Radio {
                 var newUser = new Object()
                 newUser.name = (message.member.user.tag)
                 newUser.role  = 1
-                newUser.nbCmds = 55
-                newUser.hoursSpent = 22
+                newUser.nbCmds = 1
+                newUser.hoursSpent = 0
                 newUser._id = id
                 newUser.skips = 0
                 newUser.skiplists = 0

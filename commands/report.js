@@ -13,6 +13,6 @@ module.exports = class Report extends Command{
     }
 
     static action(message){
-        Radio.reportSong(message, this.name.length);
+        Radio.report(message, this.name.length);
     }
 }

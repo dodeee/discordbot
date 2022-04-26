@@ -132,4 +132,13 @@ module.exports = class Library{
             return song.substring(0, fileExtPos)
         }
     }
+    static writeFileData(content, filename){
+        const fs = require('fs')
+        fs.writeFile(filename, content,{flag: 'a+'}, err => {
+            if (err) {
+            console.error(err)
+            return
+            }
+        })
+    }
 }
