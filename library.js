@@ -1,37 +1,36 @@
-//import {planning} from './data/planning'
 const planning = require('./data/planning')
-
-
+const arrayShuffle = require('array-shuffle');
 
 module.exports = class Library{
 
-    static playlist = 0
+    static playlist = []
     static forcedList = false
     static genre = 'ROCK';
     static songFolder = './son/';
 
     static createPlaylist(){
         const fs = require('fs');
-        // var randNum = Math.floor(Math.random()*this.getSongFolders().length);
-        // this.genre = this.getSongFolders()[randNum];
-        // console.log("val:"+randNum+" - genre: "+this.genre);
         if(!this.forcedList) this.setPlanningsPlaylist()
-        const arrayShuffle = require('array-shuffle');
         this.playlist = arrayShuffle(fs.readdirSync(this.songFolder +this.genre+'/'))
     }
 
-    static setNextFile(){
-        if(this.playlist !== 0){
-            if(this.playlist.length == 0){
-                this.createPlaylist()
-            }
-                let song = this.playlist[0]
-                this.playlist.shift()
-                return this.songFolder+ this.genre+'/'+song;            
-        } else{
-            console.log("No playlist")
-            return 0
+    static createBlindtestPlaylist(){
+        const fs = require('fs');
+        let data = fs.readFileSync('./logs/blindtest-list.txt',{encoding:'utf8', flag:'r'});
+        data = data.split('\n')
+        this.playlist = arrayShuffle(data)
+    }
+
+    static setNextFile(isBlindtest){
+        if(this.playlist.length === 0){
+            if(isBlindtest) {this.createBlindtestPlaylist()}
+            else {this.createPlaylist()}
         }
+        let song = this.playlist[0]
+        this.playlist.shift()
+        if(isBlindtest) {return this.songFolder+song}
+        else {return this.songFolder+ this.genre+'/'+song}
+                 
     }
 
     static getSongName(){
@@ -76,13 +75,8 @@ module.exports = class Library{
                     match = Library.getSongArtist(match) + ' - '+ Library.getSongName(match)
                     arr[index] = match + " ("+dir+")"
                 })
-                //if(matches.length > 15) matches.length = 15
-                //searchResult.push(matches)
-                
                 Array.prototype.push.apply(searchResult, matches);
-            }
-            // if(searchResult.length>=15) return false // arreter après 15 résultats
-            // return true       
+            }   
         });
         let remaingResults
         if(searchResult.length > 15){

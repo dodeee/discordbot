@@ -1,11 +1,12 @@
 const User = require('./Scheme');
 const mongoose = require('mongoose');
+const CONSTS = require('../data/consts')
 
 
 module.exports = class BD{
 
     static async BDConnect(){
-        mongoose.connect('mongodb+srv://
+        mongoose.connect('mongodb+srv://'+CONSTS.BDCon+'/myFirstDatabase?retryWrites=true&w=majority',
         { useNewUrlParser: true,
             useUnifiedTopology: true })
         .then(() => console.log('Connexion à MongoDB réussie !'))
@@ -85,5 +86,13 @@ module.exports = class BD{
         .then(() => console.log(""))
         .catch((error) => console.log(error));
 
+    }   
+    static setRole(id, role){
+        User.updateOne(
+            {_id: id}, 
+            {role:role}
+            )
+        .then(() => console.log(""))
+        .catch((error) => console.log(error));
     }   
 }

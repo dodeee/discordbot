@@ -2,6 +2,8 @@ const Library = require('./library')
 const Reply = require('./reply')
 const BD = require('./model/BD')
 const Blindtest = require('./blindtest')
+//const { db } = require('./model/Scheme')
+const CONSTS = require('./data/consts')
 
 
 module.exports = class Radio {
@@ -13,25 +15,38 @@ module.exports = class Radio {
     static blindtest = false;
     static currSong='';
     static commmands = []
-    static nbVotelist = 0
     static voiceChanId = 0
+    static textChanId = 0
+    static votelistChoices = Array(9).fill(0);
+    static voteskippers = []
+    static votelisters = []
+    static skipNextPlanning = false
+    static isFirstStart = true
 
     //////////////////////////////////////////////// RADIO COMMANDS ///////////////////////////////////////////////////////////////////////////
 
     static start(message) {
-        
-        console.log('vboice chan : '+this.voiceChanId)
         if (this.getState() === 0) {
-            this.voiceChan = message.guild.channels.cache
-            .filter(function (channel) { return channel.type == 'voice' && channel.id == Radio.voiceChanId }) // 639485992952397829
-            .first()
-            this.setPlaylistEveryHour()
+            if(Reply.messager == 0){
+                const messager = message.guild.channels.cache
+                .filter(function (channel) { return channel.type == 'text' && channel.id == 639485992952397827 }) // 639485992952397829
+                .first()
+                Reply.setMessager(messager)
+            }
+            if(this.voiceChan === 0){
+                this.voiceChan = message.guild.channels.cache
+                .filter(function (channel) { return channel.type == 'voice' && channel.id == Radio.voiceChanId }) // 639485992952397829
+                .first()
+            }
+            if(this.isFirstStart){
+                this.setPlaylistEveryHour()
+                this.isFirstStart = false
+            }
            
             Reply.sayEmbedWithTitle("Welcome to RadioBot (type !help for command info)", '')
             if(this.blindtest) Reply.say("**Blindtest mode**")
             else Reply.say("**Radio mode**")
             this.setState(1)
-            Library.createPlaylist()
             this.voiceChan.join()
                 .then(function (con) {
                     Radio.connection = con
@@ -43,6 +58,8 @@ module.exports = class Radio {
         }
     }
 
+    //admin commands
+
     static next() {
         if (this.getState != 0 && !this.blindtest) {
             this.playNextFile()
@@ -51,14 +68,14 @@ module.exports = class Radio {
     }
 
     static pause() {
-        if (this.getState() === 1) {
+        if (this.getState() === 1 && !this.blindtest) {
             this.dispatcher.pause()
             this.setState(2)
         }
     }
 
     static play() {
-        if (this.getState() === 2) {
+        if (this.getState() === 2 && !this.blindtest) {
             this.dispatcher.resume()
             this.setState(1)
         }
@@ -71,10 +88,27 @@ module.exports = class Radio {
         }
     }
 
-    static voteskip(){
-        if(this.getState() != 0 && !this.blindtest){
+    static setlist(message){
+        console.log(message.content)
+        if(this.getState!=0){
+            let chosenListNum = message.content.split(' ')[1];
+            if(chosenListNum !== undefined && (chosenListNum-1) >= 0 && (chosenListNum-1) < Library.getSongFolders().length){
+                console.log(Library.getSongFolders()[chosenListNum-1])
+                this.changingPlaylist()
+                Library.setSongFolder(Library.getSongFolders()[chosenListNum-1]); 
+            } else {
+                console.log("bad list choice")
+            }
+        }
+    }
+    //End Admin commands
+
+    static voteskip(message){
+        const id = message.member.user.id.toString()
+        if(this.getState() != 0 && !this.blindtest && !this.voteskippers.includes(id) && this.checkUserinChannel(id)){
+            this.voteskippers.push(id)
             this.nbVoteskip+=1
-            let mandatoryVoteskipNb = Math.ceil((this.voiceChan.members.size - 1)*0.6);
+            let mandatoryVoteskipNb = Math.ceil((this.voiceChan.members.size - 1)* CONSTS.voteRatio);
             Reply.say("Voteskip "+ this.nbVoteskip+" / "+ mandatoryVoteskipNb+" Necessary");
             if(this.nbVoteskip >= mandatoryVoteskipNb){
                 Reply.say("Song skipped")
@@ -83,17 +117,20 @@ module.exports = class Radio {
         }
     }
     static votelist(message){
+        const id = message.member.user.id.toString()
         console.log(message.content)
-        if(this.getState!=0){
+        if(this.getState() === 1 && !this.votelisters.includes(id) && this.checkUserinChannel(id)){
             let chosenListNum = message.content.split(' ')[1];
             if(chosenListNum !== undefined && (chosenListNum-1) >= 0 && (chosenListNum-1) < Library.getSongFolders().length){
-                this.nbVotelist+=1
-                let mandatoryVoteNb = Math.ceil((this.voiceChan.members.size - 1)*0.6);
-                Reply.say("Votelist "+ this.nbVotelist+" / "+ mandatoryVoteNb+" Necessary");
-                if(this.nbVotelist >= mandatoryVoteNb){
+                this.votelistChoices[chosenListNum] +=1
+                this.votelisters.push(id)
+                console.log(this.votelistChoices)
+                let mandatoryVoteNb = Math.ceil((this.voiceChan.members.size - 1)* CONSTS.voteRatio);
+                Reply.say("Votelist "+ this.votelistChoices[chosenListNum]+" / "+ mandatoryVoteNb+" Necessary for "+Library.getSongFolders()[chosenListNum-1]);
+                if(this.votelistChoices[chosenListNum] >= mandatoryVoteNb){
                     console.log(Library.getSongFolders()[chosenListNum-1])
-                    this.nbVotelist=0
-                    Reply.say("Playlist changed")
+                    this.changingPlaylist()
+                    Reply.say("Playlist changed to "+Library.getSongFolders()[chosenListNum-1])
                     Library.setSongFolder(Library.getSongFolders()[chosenListNum-1]); 
                 }
             } else {
@@ -114,13 +151,13 @@ module.exports = class Radio {
     
     static me(message){
         const id = message.member.user.id.toString()
-        BD.getUserById(id).then(res =>{
-            if(res){
-                let channelPoints = res.nbCmds*10 + res.hoursSpent*100 - 500 * res.skips - 2500 * res.skiplists 
+        BD.getUserById(id).then(user =>{
+            if(user){
+                let channelPoints = user.nbCmds*CONSTS.cmdPoints + user.hoursSpent*CONSTS.hourSpentPoints - CONSTS.skipPoints * user.skips - CONSTS.skiplistPoints * user.skiplists 
                 var roleName = "unknown";
-                if(res.role==0) roleName = "Admin";
-                else if(res.role==1) roleName = "User";
-                Reply.sayEmbedWithTitle("User: "+res.name+"\n","Chan Points: "+channelPoints+"\nBlindtestPoints: "+res.blindtestPoints+"\nRole: "+roleName);
+                if(user.role==0) roleName = "Admin";
+                else if(user.role==1) roleName = "User";
+                Reply.sayEmbedWithTitle("User: "+user.name+"\n","Chan Points: "+channelPoints+"\nBlindtestPoints: "+user.blindtestPoints+"\nRole: "+roleName);
             } else{
                 console.log("UnknownUser");
             }
@@ -130,34 +167,24 @@ module.exports = class Radio {
     }
 
     static setBlindtest(val){
-        this.blindtest=val;
-        Blindtest.setBlindtestOn(val && this.getState() === 1)
-        if(this.blindtest){
-            Reply.say("**Blindtest mode**")
-            if(this.getState() >0) this.playNextFile()
-        }
-            
-        else {
-            Reply.say("**Radio mode**")
-            if(this.getState() >0) this.playNextFile()
-        }
+        if(this.blindtest !== val){
+            Library.playlist = []
+            this.blindtest=val;
+            Blindtest.setBlindtestOn(val && this.getState() === 1)
+            Blindtest.hasStateChanged(true)
+            if(this.blindtest){
+                Reply.say("**Blindtest mode**")
+                if(this.getState() >0) this.playNextFile()
+            }
+                
+            else {
+                Reply.say("**Radio mode**")
+                if(this.getState() >0) this.playNextFile()
+            }
+    }
     }
     
    
-    
-    static setlist(message){
-        console.log(message.content)
-        if(this.getState!=0){
-            let chosenListNum = message.content.split(' ')[1];
-            if(chosenListNum !== undefined && (chosenListNum-1) >= 0 && (chosenListNum-1) < Library.getSongFolders().length){
-                console.log(Library.getSongFolders()[chosenListNum-1])
-                this.nbVotelist=0
-                Library.setSongFolder(Library.getSongFolders()[chosenListNum-1]); 
-            } else {
-                console.log("bad list choice")
-            }
-        }
-    }
 
 
     static report(message, commandLength){  
@@ -169,7 +196,7 @@ module.exports = class Radio {
             }
             logContent+=', ' +new Date()+'\n'
             Library.writeFileData(logContent, './logs/report-logs.txt')
-            Reply.say('Reported song : ' + this.currSong);
+            Reply.say('Reported song : ' + Library.getSongArtist(this.currSong)+" - "+ Library.getSongName(this.currSong));
         } else{
             console.log("pas de chanson"+this.currSong)
         }
@@ -195,23 +222,21 @@ module.exports = class Radio {
     }
 
     static skip(message){
-        if(this.getState() != 0){
+        if(this.getState() != 0 && !this.blindtest){
             const id = message.member.user.id.toString()
             BD.getUserById(id).then(user =>{
                 if(user){
-                    let channelPoints = user.nbCmds*10 + user.hoursSpent*100 - 500 * user.skips - 2500 * user.skiplists
-                    if(channelPoints >= 500){
-                        Reply.say(user.name+" skipped song for 500 Chan Points: ")
+                    let channelPoints = user.nbCmds*CONSTS.cmdPoints + user.hoursSpent*CONSTS.hourSpentPoints - CONSTS.skipPoints * user.skips - CONSTS.skiplistPoints * user.skiplists
+                    if(channelPoints >= CONSTS.skipPoints){
+                        Reply.say(user.name+" skipped song for "+CONSTS.skipPoints+" Chan Points: ")
                         BD.addSkips(id, 1, 0)
                         this.playNextFile()
                     } else{
                         Reply.say(user.name+" not enough Chan Points ! ")
-                        
                     }
                 } else{
                     console.log("UnknownUser");
                 }
-                
             })
         }
     }
@@ -225,14 +250,13 @@ module.exports = class Radio {
             if(chosenListNum !== undefined && (chosenListNum-1) >= 0 && (chosenListNum-1) < Library.getSongFolders().length){
                 BD.getUserById(id).then(user =>{
                     if(user){
-                        let channelPoints = user.nbCmds*10 + user.hoursSpent*100 - 500 * user.skips - 2500 * user.skiplists
-                        if(channelPoints >= 2500){
-                            Reply.say(user.name+" skipped playlist for 2500 Chan Points: ")
+                        let channelPoints = user.nbCmds*CONSTS.cmdPoints + user.hoursSpent*CONSTS.hourSpentPoints - CONSTS.skipPoints * user.skips - CONSTS.skiplistPoints * user.skiplists
+                        if(channelPoints >= CONSTS.skiplistPoints){
+                            Reply.say(user.name+" skipped playlist for "+CONSTS.skiplistPoints+" Chan Points: ")
                             BD.addSkips(id, 0, 1)
                             console.log(Library.getSongFolders()[chosenListNum-1])
-                            this.nbVotelist=0
+                            Radio.changingPlaylist()
                             Library.setSongFolder(Library.getSongFolders()[chosenListNum-1]);
-                            this.playNextFile()
                         } else{
                             Reply.say(user.name+" not enough Chan Points ! ")
                             
@@ -251,14 +275,14 @@ module.exports = class Radio {
             if(cmd.name != '!help' && cmd.authorizedLevel != 0)
             infos+=  " -- " +cmd.getName() + cmd.getHelpInfo()+ '\n';
         });
-        Reply.sayEmbedWithTitle("Existing commands information",infos);
+        Reply.sayEmbedWithTitle("Commands info",infos);
     }
 
     static addit(){        
         if(this.getState() > 0 && this.currSong != ''){ // chanson en cours
             let logContent = Library.genre + '/'+this.currSong + '\n'
             Library.writeFileData(logContent, './logs/blindtest-list.txt')  
-            Reply.say('Song added for blindtest : ' + this.currSong);
+            Reply.say('Song added for blindtest : ' + Library.getSongArtist(this.currSong)+" - "+ Library.getSongName(this.currSong));
         } else{
             console.log("pas de chanson"+this.currSong)
         }
@@ -272,27 +296,65 @@ module.exports = class Radio {
         }
     }
 
+    static leaderboard(){
+        BD.getAllUsers().then(users =>{
+            let usersChanPoints = users.map(
+                (user) => {
+                    let acc = {'name' : user.name, 'points' : user.nbCmds*CONSTS.cmdPoints + user.hoursSpent*CONSTS.hourSpentPoints}
+                    return acc
+                }
+            ).sort((a, b) => (a.points < b.points) ? 1 : -1)
+         
+            let usersBlindPoints = users.map(
+                (user) => {
+                    let acc = {'name' : user.name, 'points' : user.blindtestPoints}
+                    return acc
+                }
+            ).sort((a, b) => (a.points < b.points) ? 1 : -1)
+            this.showFirstUsers(usersChanPoints, "Channel Points")
+            this.showFirstUsers(usersBlindPoints, "Blindtest Points")
+        });
+    }
+
     /////////////////////////////////////////// END OF COMMANDS /////////////////////////////////////////////////////////////////////
 
     static playNextFile() {
-        this.nbVoteskip = 0
-        var song = Library.setNextFile();
-        console.log(song)
-        var songNameArray = song.split('/');
-        this.currSong = songNameArray[songNameArray.length-1];
-        this.dispatcher = Radio.connection.play(song);
-        if(this.blindtest){
-            Blindtest.setupBlindtest(this.currSong).then(()=>{
-                console.log("finito dans radio")
-                if(Blindtest.isBlindtestOn) Radio.playNextFile()
-            })
+        if(this.blindtest && Blindtest.stateChanged){
+            console.log("fo pa relancer de blindtest")
+        } else {
+            this.nbVoteskip = 0
+            this.voteskippers = []
+            var song = Library.setNextFile(this.blindtest);
+            console.log(song)
+            var songNameArray = song.split('/');
+            this.currSong = songNameArray[songNameArray.length-1];
+            this.dispatcher = Radio.connection.play(song);
+            if(this.blindtest){
+                Blindtest.setupBlindtest(this.currSong).then(()=>{
+                    if(Blindtest.isBlindtestOn){
+                        console.log("blindtest song finito")
+                        Blindtest.hasStateChanged(false)
+                        Radio.playNextFile()
+                    } 
+                })
+            }
+            else {
+                Reply.sayEmbedSong(Library.getSongName(Radio.currSong), Library.getSongArtist(Radio.currSong), Library.genre,"./img/dvd.png");
+                this.dispatcher.on('finish', function(){
+                    if(!Radio.blindtest) Radio.playNextFile()
+                })
+            }
         }
-        else {
-            Reply.sayEmbedSong(Library.getSongName(Radio.currSong), Library.getSongArtist(Radio.currSong), Library.genre,"./img/dvd.png");
-            this.dispatcher.on('finish', function(){
-                if(!Radio.blindtest) Radio.playNextFile()
-            })
+    }
+
+    static showFirstUsers(users, title){
+        let i = 0
+        let response = ""
+        while(i < users.length && i < 5){
+            response+=users[i].name.split('#')[0] + " : " + users[i].points+"\n"
+            i++
         }
+        Reply.sayEmbedWithTitle(title, response)
     }
 
     static isBlindtestOn(){
@@ -305,6 +367,9 @@ module.exports = class Radio {
 
     static setState(val) {
         Blindtest.setBlindtestOn(this.blindtest && val === 1)
+        if(val !== 1){
+                Blindtest.hasStateChanged(true)
+        }
         this.state = val
     }
     static setCommands(commands){
@@ -317,12 +382,19 @@ module.exports = class Radio {
         var start = delay - (now.getMinutes() * 60 + now.getSeconds()) * 1000 + 10000 //+ now.getMilliseconds();
         //this.countChannelPoints()
         setTimeout(function updating() {
-            if(Radio.state === 1){
+            if(!Radio.skipNextPlanning){
             console.log("every hour passed : "+new Date().getHours())
-            Radio.nbVotelist=0
+            Radio.changingPlaylist()
+            let previousGenre = Library.genre
             Library.setPlanningsPlaylist()
+            let newGenre = Library.genre
+            if(Radio.state === 1 && newGenre !== previousGenre){
+                console.log("Chgt de planning")
+                Reply.say("Planning changing playlist to: "+newGenre)
+            }
             Radio.countChannelPoints()
             }
+            Radio.skipNextPlanning = false
         setTimeout(updating, delay);
         }, start);
 
@@ -354,14 +426,13 @@ module.exports = class Radio {
                 nbUserInChannel++
             }
         });
-        if(nbUserInChannel === 0){
+        if(nbUserInChannel === 0 ){
             this.stop()
         }
             
     }
 
     static checkMessage(message){
-        console.log("writer id : " + message.member.user.id)
         const id = message.member.user.id.toString()
         BD.getUserById(id).then(res =>{
             if(res){
@@ -391,6 +462,25 @@ module.exports = class Radio {
             } 
         })
         return role <= requiredAuth
+    }
+    static changingPlaylist(){
+        this.votelisters = []
+        this.votelistChoices = Array(9).fill(0)
+        this.skipNextPlanning = true
+    }
+    static checkUserinChannel(id){
+        let isIn = false
+        this.voiceChan.members.forEach(user => {
+            if(id === user.user.id){
+                isIn = true
+            }
+        })
+        return isIn
+    }
+    static userJoined(member){
+        if(this.getState() === 0){
+            this.start(member)
+        }
     }
 
 }

@@ -9,12 +9,11 @@ module.exports = class Command{
     static parse(message){
         //let reg = /^[a-zA-Z]+$/
         //if(message.content.startsWith(this.cmdChar) && reg.test(message.content.substr(1))){
-        let reg = /^[!a-zA-Z0-9\s]+$/
+        let reg = /^[!a-zA-Z0-9\sàâäèéêëîïôœùûüÿçÀÂÄÈÉÊËÎÏÔŒÙÛÜŸÇ&']+$/
 
         if(message.content.startsWith(this.cmdChar) && reg.test(message.content)){ 
             if(this.match(message)){
                 Radio.authorizedUser(message, this.authorizedLevel).then(authorized =>{
-                    console.log("role in cmds : "+authorized)
                 
                     if(authorized){
                         this.action(message)

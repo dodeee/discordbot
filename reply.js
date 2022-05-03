@@ -20,8 +20,8 @@ module.exports = class Reply {
         .setDescription(artist)
         .setThumbnail('https://ak.picdn.net/shutterstock/videos/1019445205/thumb/1.jpg?ip=x480')
         .addField("Playlist",description.toUpperCase())
+        .setFooter("\u2800".repeat(20/*any big number works too*/))
         .setTimestamp()
-        .setFooter("\u2800".repeat(30/*any big number works too*/)+"|")
         this.messager.send(songEmbed);
         }
     static sayEmbedWithTitle(title, content){
